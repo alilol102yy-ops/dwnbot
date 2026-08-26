@@ -256,6 +256,54 @@ async def download_local_compressed(url: str, output_dir: str = "downloads"):
         file_prefix = f"media_{uuid.uuid4().hex[:8]}"
         filepath = f"{output_dir}/{file_prefix}.{'mp3' if is_audio else 'mp4'}"
 
+        # 🟢 محرك تيك توك المباشر والسريع بدون علامة مائية
+        if "tiktok.com" in url or "vt.tiktok.com" in url:
+            try:
+                print(f"[LOG] Fetching TikTok media via TikWM...", flush=True)
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(f"https://www.tikwm.com/api/?url={urllib.parse.quote(url)}", headers={"User-Agent": "Mozilla/5.0"}, timeout=10) as resp:
+                        if resp.status == 200:
+                            d = (await resp.json()).get("data", {})
+                            media_url = d.get("music") if is_audio else (d.get("play") or d.get("wmplay"))
+                            title = d.get("title", "TikTok Media")
+                            author = d.get("author", {}).get("nickname", "TikTok")
+                            
+                            if media_url:
+                                async with session.get(media_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=120) as v_resp:
+                                    if v_resp.status == 200:
+                                        with open(filepath, 'wb') as f:
+                                            async for chunk in v_resp.content.iter_chunked(2*1024*1024):
+                                                f.write(chunk)
+                                        if os.path.exists(filepath) and os.path.getsize(filepath) > 50 * 1024:
+                                            print(f"[LOG] TikTok Media Downloaded Successfully ({os.path.getsize(filepath)/(1024*1024):.2f}MB)", flush=True)
+                                            return None, filepath, "audio" if is_audio else "video", check_sensitivity(title) or check_sensitivity(url), title, author
+            except Exception as e:
+                print(f"[LOG] TikTok direct download failed: {e}", flush=True)
+
+        # 🟢 محرك تويتر / X المباشر
+        if "twitter.com" in url or "x.com" in url:
+            try:
+                match = re.search(r'status/(\d+)', url)
+                if match:
+                    print(f"[LOG] Fetching Twitter/X media via VxTwitter...", flush=True)
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(f"https://api.vxtwitter.com/status/{match.group(1)}", timeout=8) as resp:
+                            if resp.status == 200:
+                                d = await resp.json()
+                                media_list = d.get("media_extended", [])
+                                vids = [m["url"] for m in media_list if m.get("type") in ["video", "gif"]]
+                                if vids:
+                                    async with session.get(vids[0], timeout=120) as v_resp:
+                                        if v_resp.status == 200:
+                                            with open(filepath, 'wb') as f:
+                                                async for chunk in v_resp.content.iter_chunked(2*1024*1024):
+                                                    f.write(chunk)
+                                            if os.path.exists(filepath) and os.path.getsize(filepath) > 50 * 1024:
+                                                return None, filepath, "video", d.get("possibly_sensitive", False), d.get("text", "Twitter Video"), "Twitter"
+            except Exception as e:
+                print(f"[LOG] Twitter direct download failed: {e}", flush=True)
+
+        # 🟢 محرك يوتيوب المباشر
         if "youtube.com" in url or "youtu.be" in url:
             video_id = extract_youtube_id(url)
             print(f"[LOG] Processing YouTube Link. Extracted Video ID: {video_id}", flush=True)
