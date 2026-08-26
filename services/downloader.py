@@ -222,10 +222,29 @@ async def fetch_from_cobalt_api(url: str, is_audio: bool):
     return None
 
 # ==========================================
-# 5. محرك التنزيل الشامل
+# 5. دالة فك الروابط المختصرة
+# ==========================================
+async def expand_short_url(url: str) -> str:
+    """فك الروابط المختصرة (مثل vt.tiktok.com أو vm.tiktok.com) للحصول على الرابط الكامل"""
+    if any(s in url for s in ("vt.tiktok.com", "vm.tiktok.com", "/t/", "v.douyin.com")):
+        try:
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, allow_redirects=True, headers=headers, timeout=6) as resp:
+                    if resp.url:
+                        return str(resp.url)
+        except Exception:
+            pass
+    return url
+
+# ==========================================
+# 6. محرك التنزيل الشامل
 # ==========================================
 async def download_local_compressed(url: str, output_dir: str = "downloads"):
     os.makedirs(output_dir, exist_ok=True)
+    
+    # فك الروابط المختصرة أولاً
+    url = await expand_short_url(url)
     
     is_audio = "spotify.com" in url or "soundcloud.com" in url
 
@@ -242,7 +261,7 @@ async def download_local_compressed(url: str, output_dir: str = "downloads"):
         filepath = f"{output_dir}/{file_prefix}.{'mp3' if is_audio else 'mp4'}"
 
         # 🟢 محرك تيك توك المباشر والسريع (TikWM + TikMate Fallback)
-        if "tiktok.com" in url or "vt.tiktok.com" in url:
+        if "tiktok.com" in url:
             # 1. المحاولة الأولى عبر TikWM
             try:
                 print(f"[LOG] Fetching TikTok media via TikWM...", flush=True)
