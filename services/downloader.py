@@ -146,21 +146,6 @@ async def get_direct_stream_url(url: str):
                 except Exception:
                     pass
 
-        # تيك توك
-        if "tiktok.com" in url or "vt.tiktok.com" in url:
-            try:
-                async with session.get(f"https://www.tikwm.com/api/?url={urllib.parse.quote(url)}", headers={"User-Agent": "Mozilla/5.0"}, timeout=6) as resp:
-                    if resp.status == 200:
-                        d = (await resp.json()).get("data", {})
-                        if is_audio and "music" in d:
-                            return d["music"], "audio", False, d.get("title", "Audio"), d.get("author", {}).get("nickname", "TikTok")
-                        if "images" in d and d["images"]:
-                            return d["images"], "photo", False, d.get("title", "Photos"), d.get("author", {}).get("nickname", "TikTok")
-                        if "play" in d:
-                            return d["play"], "video", False, d.get("title", "Video"), d.get("author", {}).get("nickname", "TikTok")
-            except Exception:
-                pass
-
     return None, "video", False, None, None
 
 # ==========================================
@@ -256,29 +241,54 @@ async def download_local_compressed(url: str, output_dir: str = "downloads"):
         file_prefix = f"media_{uuid.uuid4().hex[:8]}"
         filepath = f"{output_dir}/{file_prefix}.{'mp3' if is_audio else 'mp4'}"
 
-        # 🟢 محرك تيك توك المباشر والسريع بدون علامة مائية
+        # 🟢 محرك تيك توك المباشر والسريع (TikWM + TikMate Fallback)
         if "tiktok.com" in url or "vt.tiktok.com" in url:
+            # 1. المحاولة الأولى عبر TikWM
             try:
                 print(f"[LOG] Fetching TikTok media via TikWM...", flush=True)
                 async with aiohttp.ClientSession() as session:
                     async with session.get(f"https://www.tikwm.com/api/?url={urllib.parse.quote(url)}", headers={"User-Agent": "Mozilla/5.0"}, timeout=10) as resp:
                         if resp.status == 200:
-                            d = (await resp.json()).get("data", {})
-                            media_url = d.get("music") if is_audio else (d.get("play") or d.get("wmplay"))
-                            title = d.get("title", "TikTok Media")
-                            author = d.get("author", {}).get("nickname", "TikTok")
-                            
-                            if media_url:
-                                async with session.get(media_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=120) as v_resp:
+                            res_json = await resp.json()
+                            if res_json.get("code") == 0:
+                                d = res_json.get("data", {})
+                                media_url = d.get("music") if is_audio else (d.get("play") or d.get("wmplay"))
+                                title = d.get("title", "TikTok Media")
+                                author = d.get("author", {}).get("nickname", "TikTok")
+                                
+                                if media_url:
+                                    async with session.get(media_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=120) as v_resp:
+                                        if v_resp.status == 200:
+                                            with open(filepath, 'wb') as f:
+                                                async for chunk in v_resp.content.iter_chunked(2*1024*1024):
+                                                    f.write(chunk)
+                                            if os.path.exists(filepath) and os.path.getsize(filepath) > 50 * 1024:
+                                                print(f"[LOG] TikTok Media Downloaded via TikWM ({os.path.getsize(filepath)/(1024*1024):.2f}MB)", flush=True)
+                                                return None, filepath, "audio" if is_audio else "video", check_sensitivity(title) or check_sensitivity(url), title, author
+            except Exception as e:
+                print(f"[LOG] TikWM failed: {e}", flush=True)
+
+            # 2. المحاولة الثانية عبر TikMate (احتياطي سريع عالي الجودة)
+            try:
+                print(f"[LOG] Fetching TikTok media via TikMate fallback...", flush=True)
+                async with aiohttp.ClientSession() as session:
+                    async with session.post("https://api.tikmate.app/api/lookup", data={"url": url}, headers={"User-Agent": "Mozilla/5.0"}, timeout=10) as resp:
+                        if resp.status == 200:
+                            d = await resp.json()
+                            token = d.get("token")
+                            vid_id = d.get("id")
+                            if token and vid_id:
+                                dl_url = f"https://tikmate.app/download/{token}/{vid_id}.mp4?hd=1"
+                                async with session.get(dl_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=120) as v_resp:
                                     if v_resp.status == 200:
                                         with open(filepath, 'wb') as f:
                                             async for chunk in v_resp.content.iter_chunked(2*1024*1024):
                                                 f.write(chunk)
                                         if os.path.exists(filepath) and os.path.getsize(filepath) > 50 * 1024:
-                                            print(f"[LOG] TikTok Media Downloaded Successfully ({os.path.getsize(filepath)/(1024*1024):.2f}MB)", flush=True)
-                                            return None, filepath, "audio" if is_audio else "video", check_sensitivity(title) or check_sensitivity(url), title, author
+                                            print(f"[LOG] TikTok Media Downloaded via TikMate ({os.path.getsize(filepath)/(1024*1024):.2f}MB)", flush=True)
+                                            return None, filepath, "video", check_sensitivity(url), "TikTok Media", "TikTok"
             except Exception as e:
-                print(f"[LOG] TikTok direct download failed: {e}", flush=True)
+                print(f"[LOG] TikMate fallback failed: {e}", flush=True)
 
         # 🟢 محرك تويتر / X المباشر
         if "twitter.com" in url or "x.com" in url:
