@@ -315,10 +315,6 @@ async def download_local_compressed(url: str, output_dir: str = "downloads"):
                 'youtube': {
                     'player_client': ['android', 'web']
                 }
-            },
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                'Accept': '*/*',
             }
         }
         
