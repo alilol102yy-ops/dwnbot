@@ -1,0 +1,41 @@
+﻿# Environment variables and secrets
+.env
+.env.local
+.env.*
+
+# Cookies & Sessions
+*cookies.txt
+cookies.txt
+inscookies.txt
+fcookies.txt
+*.session
+*.session-journal
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+*.class
+*.so
+.Python
+
+# Downloads folder
+downloads/
+media/
+*.mp4
+*.mp3
+*.jpg
+*.png
+*.webp
+
+# Virtual Environment
+venv/
+.venv/
+env/
+ENV/
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
