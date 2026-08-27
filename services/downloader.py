@@ -225,14 +225,20 @@ async def fetch_from_cobalt_api(url: str, is_audio: bool):
 # 5. دالة فك الروابط المختصرة
 # ==========================================
 async def expand_short_url(url: str) -> str:
-    """فك الروابط المختصرة (مثل vt.tiktok.com أو vm.tiktok.com) للحصول على الرابط الكامل"""
+    """فك الروابط المختصرة (مثل vt.tiktok.com أو vm.tiktok.com) للحصول على الرابط الكامل والآيدي الرقمي"""
     if any(s in url for s in ("vt.tiktok.com", "vm.tiktok.com", "/t/", "v.douyin.com")):
         try:
-            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+            headers = {
+                "User-Agent": "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)"
+            }
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, allow_redirects=True, headers=headers, timeout=6) as resp:
-                    if resp.url:
-                        return str(resp.url)
+                async with session.get(url, allow_redirects=False, headers=headers, timeout=6) as resp:
+                    loc = resp.headers.get("Location")
+                    if loc:
+                        m = re.search(r'(\d{17,21})', loc)
+                        if m:
+                            return f"https://www.tiktok.com/@i/video/{m.group(1)}"
+                        return loc
         except Exception:
             pass
     return url
@@ -273,7 +279,7 @@ async def download_local_compressed(url: str, output_dir: str = "downloads"):
             clean_tt_url = f"https://www.tiktok.com/@i/video/{tt_match.group(1)}" if tt_match else url
 
             # 1. المحاولة عبر نطاقات TikWM المتعددة مع إعادة المحاولة الذكية
-            for domain in ["www.tikwm.com", "api.tikwm.com"]:
+            for domain in ["www.tikwm.com", "tikwm.com"]:
                 try:
                     print(f"[LOG] Fetching TikTok media via {domain}...", flush=True)
                     async with aiohttp.ClientSession() as session:
