@@ -352,7 +352,7 @@ async def download_local_compressed(url: str, output_dir: str = "downloads"):
             except Exception as e:
                 print(f"[LOG] TikMate fallback failed: {e}", flush=True)
 
-            raise Exception("تعذر تحميل فيديو تيك توك في الوقت الحالي، يرجى التأكد من أن الحساب عام والمحاولة مرة أخرى.")
+            print("[LOG] TikTok APIs unavailable or challenged. Seamlessly falling back to native yt-dlp engine...", flush=True)
 
         # 🟢 محرك تويتر / X المباشر
         if "twitter.com" in url or "x.com" in url:
