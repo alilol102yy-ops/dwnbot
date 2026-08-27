@@ -1,4 +1,4 @@
-﻿# Environment variables and secrets
+# Environment variables and secrets
 .env
 .env.local
 .env.*
@@ -10,6 +10,9 @@ inscookies.txt
 fcookies.txt
 *.session
 *.session-journal
+*.db
+*.sqlite
+*.sqlite3
 
 # Python Cache & Bytecode
 __pycache__/
