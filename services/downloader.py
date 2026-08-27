@@ -266,7 +266,7 @@ async def download_local_compressed(url: str, output_dir: str = "downloads"):
         file_prefix = f"media_{uuid.uuid4().hex[:8]}"
         filepath = f"{output_dir}/{file_prefix}.{'mp3' if is_audio else 'mp4'}"
 
-        # 🟢 محرك تيك توك فائق الصمود (TikWM Multi-Domain + TikMate Fallback)
+        # 🟢 محرك تيك توك فائق الصمود (SSSTik + TikWM Multi-Domain + TikMate Fallback)
         if "tiktok.com" in url or "douyin.com" in url:
             tt_headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -278,7 +278,60 @@ async def download_local_compressed(url: str, output_dir: str = "downloads"):
             tt_match = re.search(r'(\d{17,21})', url)
             clean_tt_url = f"https://www.tiktok.com/@i/video/{tt_match.group(1)}" if tt_match else url
 
-            # 1. المحاولة عبر نطاقات TikWM المتعددة مع إعادة المحاولة الذكية عند ضغط الـ API
+            # 1. المحرك الأول: SSSTik (عبر شبكة tikcdn المقاومة لحظر الداتاسنتر)
+            try:
+                print(f"[LOG] Fetching TikTok media via SSSTik...", flush=True)
+                async with aiohttp.ClientSession() as session:
+                    async with session.get("https://ssstik.io/en", headers=tt_headers, timeout=8) as r:
+                        if r.status == 200:
+                            html = await r.text()
+                            m = re.search(r's_version = "([^"]+)"', html) or re.search(r'"tt:([^"]+)"', html)
+                            tt_val = m.group(1) if m else "0"
+                            
+                            post_data = {"id": url, "locale": "en", "tt": tt_val}
+                            s_headers = tt_headers.copy()
+                            s_headers.update({
+                                "Origin": "https://ssstik.io",
+                                "Referer": "https://ssstik.io/en",
+                                "HX-Request": "true",
+                                "HX-Target": "target",
+                                "HX-Current-URL": "https://ssstik.io/en"
+                            })
+                            async with session.post("https://ssstik.io/abc?url=dl", data=post_data, headers=s_headers, timeout=12) as post_r:
+                                if post_r.status == 200:
+                                    res_html = await post_r.text()
+                                    
+                                    # فحص إذا كان ألبوم صور
+                                    img_matches = re.findall(r'href="([^"]+)"[^>]*class="[^"]*download_link', res_html)
+                                    if img_matches and "slide" in res_html and not is_audio:
+                                        img_paths = []
+                                        for idx, img_url in enumerate(img_matches[:10]):
+                                            img_file = f"{output_dir}/{file_prefix}_img_{idx}.jpg"
+                                            async with session.get(img_url, headers=tt_headers, timeout=30) as img_resp:
+                                                if img_resp.status == 200:
+                                                    with open(img_file, 'wb') as im_f:
+                                                        im_f.write(await img_resp.read())
+                                                    if os.path.exists(img_file):
+                                                        img_paths.append(img_file)
+                                        if img_paths:
+                                            print(f"[LOG] TikTok Photo Album Downloaded via SSSTik ({len(img_paths)} photos)", flush=True)
+                                            return None, img_paths, "photo", check_sensitivity(url), "TikTok Photo Album", "TikTok"
+
+                                    dl = re.search(r'href="([^"]+)"[^>]*class="[^"]*without_watermark', res_html) or re.search(r'href="([^"]+)"[^>]*class="[^"]*download_link', res_html)
+                                    if dl:
+                                        download_url = dl.group(1)
+                                        async with session.get(download_url, headers=tt_headers, timeout=120) as v_resp:
+                                            if v_resp.status == 200:
+                                                with open(filepath, 'wb') as f:
+                                                    async for chunk in v_resp.content.iter_chunked(2*1024*1024):
+                                                        f.write(chunk)
+                                                if os.path.exists(filepath) and os.path.getsize(filepath) > 50 * 1024:
+                                                    print(f"[LOG] TikTok Media Downloaded via SSSTik ({os.path.getsize(filepath)/(1024*1024):.2f}MB)", flush=True)
+                                                    return None, filepath, "video", check_sensitivity(url), "TikTok Media", "TikTok"
+            except Exception as e:
+                print(f"[LOG] SSSTik engine failed: {e}", flush=True)
+
+            # 2. المحاولة عبر نطاقات TikWM المتعددة مع إعادة المحاولة الذكية عند ضغط الـ API
             candidate_urls = [url]
             if clean_tt_url != url:
                 candidate_urls.append(clean_tt_url)
