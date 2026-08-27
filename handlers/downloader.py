@@ -117,6 +117,27 @@ async def progress_callback(current, total, status_msg: Message, start_time_list
 async def upload_file_smart(message: Message, filepath: str, m_type: str, caption: str, is_sensitive: bool, status_msg: Message, title: str = None, performer: str = None):
     file_size = os.path.getsize(filepath) if os.path.exists(filepath) else 0
     
+    # 0. رفع ألبوم صور إذا كان الملف عبارة عن قائمة صور محلية
+    if isinstance(filepath, list):
+        try:
+            if len(filepath) == 1:
+                sent_msg = await message.answer_photo(
+                    photo=FSInputFile(filepath[0]),
+                    caption=caption,
+                    has_spoiler=is_sensitive
+                )
+            else:
+                media_group = [
+                    InputMediaPhoto(media=FSInputFile(f_path), caption=caption if i == 0 else "", has_spoiler=is_sensitive)
+                    for i, f_path in enumerate(filepath[:10])
+                ]
+                sent_msgs = await message.answer_media_group(media=media_group)
+                sent_msg = sent_msgs[0] if sent_msgs else None
+            return sent_msg
+        except Exception as e:
+            print(f"[LOG] Local photo album upload error: {e}", flush=True)
+            return None
+
     # 1. الرفع عبر Pyrogram للملفات الأكبر من 48MB إذا كان مفعلاً
     if pyro_bot and getattr(pyro_bot, 'is_connected', False) and file_size > 48 * 1024 * 1024:
         try:

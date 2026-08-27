@@ -282,10 +282,26 @@ async def download_local_compressed(url: str, output_dir: str = "downloads"):
                                 res_json = await resp.json()
                                 if res_json.get("code") == 0:
                                     d = res_json.get("data", {})
-                                    media_url = d.get("music") if is_audio else (d.get("play") or d.get("wmplay"))
                                     title = d.get("title", "TikTok Media")
                                     author = d.get("author", {}).get("nickname", "TikTok")
                                     
+                                    # دعم ألبومات صور تيك توك
+                                    images = d.get("images")
+                                    if images and isinstance(images, list) and not is_audio:
+                                        img_paths = []
+                                        for idx, img_url in enumerate(images[:10]):
+                                            img_file = f"{output_dir}/{file_prefix}_img_{idx}.jpg"
+                                            async with session.get(img_url, headers=tt_headers, timeout=30) as img_resp:
+                                                if img_resp.status == 200:
+                                                    with open(img_file, 'wb') as im_f:
+                                                        im_f.write(await img_resp.read())
+                                                    if os.path.exists(img_file):
+                                                        img_paths.append(img_file)
+                                        if img_paths:
+                                            print(f"[LOG] TikTok Photo Album Downloaded ({len(img_paths)} photos)", flush=True)
+                                            return None, img_paths, "photo", check_sensitivity(title) or check_sensitivity(url), title, author
+
+                                    media_url = d.get("music") if is_audio else (d.get("play") or d.get("wmplay"))
                                     if media_url:
                                         async with session.get(media_url, headers=tt_headers, timeout=120) as v_resp:
                                             if v_resp.status == 200:
