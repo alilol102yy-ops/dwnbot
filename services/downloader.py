@@ -278,12 +278,12 @@ async def download_local_compressed(url: str, output_dir: str = "downloads"):
             tt_match = re.search(r'(\d{17,21})', url)
             clean_tt_url = f"https://www.tiktok.com/@i/video/{tt_match.group(1)}" if tt_match else url
 
-            # 1. المحاولة عبر نطاقات TikWM المتعددة مع إعادة المحاولة الذكية
+            # 1. المحاولة عبر نطاقات TikWM المتعددة مع تمرير الرابط عبر params
             for domain in ["www.tikwm.com", "tikwm.com"]:
                 try:
                     print(f"[LOG] Fetching TikTok media via {domain}...", flush=True)
                     async with aiohttp.ClientSession() as session:
-                        async with session.get(f"https://{domain}/api/?url={urllib.parse.quote(clean_tt_url)}", headers=tt_headers, timeout=10) as resp:
+                        async with session.get(f"https://{domain}/api/", params={"url": url}, headers=tt_headers, timeout=10) as resp:
                             if resp.status == 200:
                                 res_json = await resp.json()
                                 if res_json.get("code") == 0:
