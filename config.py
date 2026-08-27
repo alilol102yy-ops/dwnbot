@@ -19,15 +19,15 @@ YOUTUBE_PROXY = os.getenv("YOUTUBE_PROXY") or None
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 
 if not BOT_TOKEN:
-    print("❌ ERROR: BOT_TOKEN missing!", flush=True)
+    print("[ERROR] BOT_TOKEN missing!", flush=True)
 if not DATABASE_URL:
-    print("❌ ERROR: DATABASE_URL missing!", flush=True)
+    print("[ERROR] DATABASE_URL missing!", flush=True)
 
 storage = MemoryStorage()
 session = AiohttpSession(timeout=600)
 
 bot = Bot(
-    token=BOT_TOKEN,
+    token=BOT_TOKEN or "123456789:ABCdefGHIjklMNOpqrSTUvwxYZ",
     session=session,
     default=DefaultBotProperties(parse_mode=ParseMode.HTML)
 )
