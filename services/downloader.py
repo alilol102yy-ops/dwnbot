@@ -278,50 +278,57 @@ async def download_local_compressed(url: str, output_dir: str = "downloads"):
             tt_match = re.search(r'(\d{17,21})', url)
             clean_tt_url = f"https://www.tiktok.com/@i/video/{tt_match.group(1)}" if tt_match else url
 
-            # 1. المحاولة عبر نطاقات TikWM المتعددة مع تمرير الرابط عبر params
-            for domain in ["www.tikwm.com", "tikwm.com"]:
-                try:
-                    print(f"[LOG] Fetching TikTok media via {domain}...", flush=True)
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(f"https://{domain}/api/", params={"url": url}, headers=tt_headers, timeout=10) as resp:
-                            if resp.status == 200:
-                                res_json = await resp.json()
-                                if res_json.get("code") == 0:
-                                    d = res_json.get("data", {})
-                                    title = d.get("title", "TikTok Media")
-                                    author = d.get("author", {}).get("nickname", "TikTok")
-                                    
-                                    # دعم ألبومات صور تيك توك
-                                    images = d.get("images")
-                                    if images and isinstance(images, list) and not is_audio:
-                                        img_paths = []
-                                        for idx, img_url in enumerate(images[:10]):
-                                            img_file = f"{output_dir}/{file_prefix}_img_{idx}.jpg"
-                                            async with session.get(img_url, headers=tt_headers, timeout=30) as img_resp:
-                                                if img_resp.status == 200:
-                                                    with open(img_file, 'wb') as im_f:
-                                                        im_f.write(await img_resp.read())
-                                                    if os.path.exists(img_file):
-                                                        img_paths.append(img_file)
-                                        if img_paths:
-                                            print(f"[LOG] TikTok Photo Album Downloaded ({len(img_paths)} photos)", flush=True)
-                                            return None, img_paths, "photo", check_sensitivity(title) or check_sensitivity(url), title, author
+            # 1. المحاولة عبر نطاقات TikWM المتعددة مع إعادة المحاولة الذكية عند ضغط الـ API
+            candidate_urls = [url]
+            if clean_tt_url != url:
+                candidate_urls.append(clean_tt_url)
 
-                                    media_url = d.get("music") if is_audio else (d.get("play") or d.get("wmplay"))
-                                    if media_url:
-                                        async with session.get(media_url, headers=tt_headers, timeout=120) as v_resp:
-                                            if v_resp.status == 200:
-                                                with open(filepath, 'wb') as f:
-                                                    async for chunk in v_resp.content.iter_chunked(2*1024*1024):
-                                                        f.write(chunk)
-                                                if os.path.exists(filepath) and os.path.getsize(filepath) > 50 * 1024:
-                                                    print(f"[LOG] TikTok Media Downloaded via {domain} ({os.path.getsize(filepath)/(1024*1024):.2f}MB)", flush=True)
-                                                    return None, filepath, "audio" if is_audio else "video", check_sensitivity(title) or check_sensitivity(url), title, author
-                                elif "Limit" in res_json.get("msg", ""):
-                                    print(f"[LOG] {domain} rate limited, waiting 1s...", flush=True)
-                                    await asyncio.sleep(1)
-                except Exception as e:
-                    print(f"[LOG] {domain} failed: {e}", flush=True)
+            for target_u in candidate_urls:
+                for domain in ["www.tikwm.com", "tikwm.com"]:
+                    for attempt in range(2):
+                        try:
+                            print(f"[LOG] Fetching TikTok media via {domain} (attempt {attempt+1})...", flush=True)
+                            async with aiohttp.ClientSession() as session:
+                                async with session.get(f"https://{domain}/api/", params={"url": target_u}, headers=tt_headers, timeout=10) as resp:
+                                    if resp.status == 200:
+                                        res_json = await resp.json()
+                                        if res_json.get("code") == 0:
+                                            d = res_json.get("data", {})
+                                            title = d.get("title", "TikTok Media")
+                                            author = d.get("author", {}).get("nickname", "TikTok")
+                                            
+                                            # دعم ألبومات صور تيك توك
+                                            images = d.get("images")
+                                            if images and isinstance(images, list) and not is_audio:
+                                                img_paths = []
+                                                for idx, img_url in enumerate(images[:10]):
+                                                    img_file = f"{output_dir}/{file_prefix}_img_{idx}.jpg"
+                                                    async with session.get(img_url, headers=tt_headers, timeout=30) as img_resp:
+                                                        if img_resp.status == 200:
+                                                            with open(img_file, 'wb') as im_f:
+                                                                im_f.write(await img_resp.read())
+                                                            if os.path.exists(img_file):
+                                                                img_paths.append(img_file)
+                                                if img_paths:
+                                                    print(f"[LOG] TikTok Photo Album Downloaded ({len(img_paths)} photos)", flush=True)
+                                                    return None, img_paths, "photo", check_sensitivity(title) or check_sensitivity(url), title, author
+
+                                            media_url = d.get("music") if is_audio else (d.get("play") or d.get("wmplay"))
+                                            if media_url:
+                                                async with session.get(media_url, headers=tt_headers, timeout=120) as v_resp:
+                                                    if v_resp.status == 200:
+                                                        with open(filepath, 'wb') as f:
+                                                            async for chunk in v_resp.content.iter_chunked(2*1024*1024):
+                                                                f.write(chunk)
+                                                        if os.path.exists(filepath) and os.path.getsize(filepath) > 50 * 1024:
+                                                            print(f"[LOG] TikTok Media Downloaded via {domain} ({os.path.getsize(filepath)/(1024*1024):.2f}MB)", flush=True)
+                                                            return None, filepath, "audio" if is_audio else "video", check_sensitivity(title) or check_sensitivity(url), title, author
+                                        elif "Limit" in res_json.get("msg", "") or res_json.get("code") == -1:
+                                            print(f"[LOG] {domain} rate limited, waiting 1.2s before retry...", flush=True)
+                                            await asyncio.sleep(1.2)
+                        except Exception as e:
+                            print(f"[LOG] {domain} attempt {attempt+1} failed: {e}", flush=True)
+                            await asyncio.sleep(1)
 
             # 2. المحاولة عبر محرك TikMate الاحتياطي
             try:
