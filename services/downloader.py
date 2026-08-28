@@ -479,13 +479,14 @@ async def download_local_compressed(url: str, output_dir: str = "downloads"):
         # 🟡 المحاولة 3: yt-dlp التنزيل المحلي الاحتياطي
         out_template = f"{output_dir}/{file_prefix}.%(ext)s"
         ydl_opts = {
-            'format': 'bestaudio/best' if is_audio else 'best[height<=720][ext=mp4]/best[ext=mp4]/best',
+            'format': 'bestaudio/best' if is_audio else 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best',
+            'merge_output_format': 'mp4',
             'outtmpl': out_template,
             'quiet': True,
             'no_warnings': True,
             'nocheckcertificate': True,
             'geo_bypass': True,
-            'socket_timeout': 20,
+            'socket_timeout': 30,
             'extractor_args': {
                 'youtube': {
                     'player_client': ['android', 'web']
