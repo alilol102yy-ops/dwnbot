@@ -47,6 +47,29 @@ def is_safe_url(url: str) -> bool:
     except Exception:
         return False
 
+def _init_cookie_files():
+    """يكتب ملفات الكوكيز من متغيرات البيئة عند بدء التشغيل (لـ Render وغيره)"""
+    ig_cookies = os.environ.get("INSTAGRAM_COOKIES", "").strip()
+    if ig_cookies and not os.path.exists("inscookies.txt"):
+        try:
+            with open("inscookies.txt", "w", encoding="utf-8") as f:
+                f.write(ig_cookies)
+            print("[LOG] inscookies.txt created from INSTAGRAM_COOKIES env var", flush=True)
+        except Exception as e:
+            print(f"[LOG] Failed to write inscookies.txt: {e}", flush=True)
+
+    fb_cookies = os.environ.get("FACEBOOK_COOKIES", "").strip()
+    if fb_cookies and not os.path.exists("fcookies.txt"):
+        try:
+            with open("fcookies.txt", "w", encoding="utf-8") as f:
+                f.write(fb_cookies)
+            print("[LOG] fcookies.txt created from FACEBOOK_COOKIES env var", flush=True)
+        except Exception as e:
+            print(f"[LOG] Failed to write fcookies.txt: {e}", flush=True)
+
+_init_cookie_files()
+
+
 def get_cookie_file(url: str) -> str | None:
     if ("instagram.com" in url or "instagr.am" in url) and os.path.exists("inscookies.txt"):
         return "inscookies.txt"
@@ -55,6 +78,7 @@ def get_cookie_file(url: str) -> str | None:
     elif os.path.exists("cookies.txt"):
         return "cookies.txt"
     return None
+
 
 def normalize_text(text: str) -> str:
     if not text:
