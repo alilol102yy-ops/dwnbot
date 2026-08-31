@@ -64,7 +64,7 @@ async def process_language_selection(callback: CallbackQuery, state: FSMContext)
     bot_info = await bot.get_me()
 
     try:
-        await callback.answer("⚡", show_alert=False)
+        await callback.answer()
     except Exception:
         pass
 

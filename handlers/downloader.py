@@ -101,16 +101,7 @@ async def progress_callback(current, total, status_msg: Message, start_time_list
     
     try:
         percent = current * 100 / total
-        current_mb = current / (1024 * 1024)
-        total_mb = total / (1024 * 1024)
-        bar = '█' * int(percent / 10) + '▒' * (10 - int(percent / 10))
-        
-        text = (
-            f"📤 <b>جاري الرفع المباشر...</b>\n"
-            f"📊 <code>[{bar}] {percent:.1f}%</code>\n"
-            f"📦 <code>{current_mb:.1f} MB / {total_mb:.1f} MB</code>"
-        )
-        await status_msg.edit_text(text)
+        await status_msg.edit_text(f"جاري الرفع... {percent:.0f}%")
     except Exception:
         pass
 
@@ -211,7 +202,7 @@ async def send_media_with_auto_fallback(message: Message, url: str, status_msg: 
         await update_status_safe(status_msg, get_text('no_media', lang))
         return "NO_MEDIA"
 
-    final_caption = clean_caption + (sensitive_warnings.get(lang, sensitive_warnings['en']) if is_sensitive else "")
+    final_caption = clean_caption
 
     # إذا كان الرابط المباشر يحتوي على ألبوم صور أو ميديا متعددة
     if direct_media and isinstance(direct_media, list):
@@ -257,7 +248,7 @@ async def send_media_with_auto_fallback(message: Message, url: str, status_msg: 
         asyncio.create_task(update_status_safe(status_msg, get_text('status_step2', lang)))
 
         info, filepath, m_type, is_sensitive, title, performer = await download_local_compressed(url)
-        final_caption = clean_caption + (sensitive_warnings.get(lang, sensitive_warnings['en']) if is_sensitive else "")
+        final_caption = clean_caption
 
         if filepath and os.path.exists(filepath):
             asyncio.create_task(update_status_safe(status_msg, get_text('status_step3', lang)))
@@ -278,7 +269,7 @@ async def send_media_with_auto_fallback(message: Message, url: str, status_msg: 
                 return "SUCCESS"
             else:
                 print(f"[LOG] Upload returned None (File too large for Telegram 50MB limit)", flush=True)
-                await update_status_safe(status_msg, "⚠️ <b>حجم الملف كبير جداً ويتجاوز حد 50 ميجابايت المسموح به للبوتات في تليجرام.</b>")
+                await update_status_safe(status_msg, "حجم الملف يتجاوز الحد المسموح به (50MB).")
                 return "FAIL_LARGE"
     except Exception as e:
         print(f"[LOG] Server compressed download failed: {e}", flush=True)
@@ -307,10 +298,10 @@ async def handle_url(message: Message, state: FSMContext):
         return
 
     bot_info = await bot.get_me()
-    clean_caption = f"🤖 <b>Downloaded via @{bot_info.username}</b>"
+    clean_caption = f"@{bot_info.username}"
 
     if ("youtube.com" in url or "youtu.be" in url) and ("list=" in url or "playlist" in url):
-        status_msg = await message.answer(f"📋 <i>{get_text('status_step1', lang)}</i>")
+        status_msg = await message.answer(get_text('status_step1', lang))
         try:
             pl_title, items = await get_youtube_playlist_items(url)
             items = items[:20]
@@ -320,23 +311,15 @@ async def handle_url(message: Message, state: FSMContext):
                 await status_msg.edit_text(get_text('no_media', lang))
                 return
 
-            await status_msg.edit_text(f"🎬 <b>Playlist:</b> {pl_title}\n📊 <b>Total (Max 20):</b> {total_count}\n⚡ <i>{get_text('status_step2', lang)}</i>")
-
-            for index, item in enumerate(items, 1):
+            for item in items:
                 video_url = item['url']
-                caption = f"🎥 [{index}/{total_count}] {item['title']}\n\n{clean_caption}"
-                await send_media_with_auto_fallback(message, video_url, status_msg, caption, lang)
+                await send_media_with_auto_fallback(message, video_url, status_msg, clean_caption, lang)
                 await asyncio.sleep(2)
 
             try:
                 await status_msg.delete()
             except Exception:
                 pass
-
-            try:
-                await message.answer(get_text('send_next', lang), message_effect_id=CONFETTI_EFFECT_ID)
-            except Exception:
-                await message.answer(get_text('send_next', lang))
             return
         except Exception:
             await status_msg.edit_text(get_text('failed_download', lang))
@@ -351,14 +334,10 @@ async def handle_url(message: Message, state: FSMContext):
             await status_msg.delete()
         except Exception:
             pass
-        try:
-            await message.answer(get_text('send_next', lang), message_effect_id=CONFETTI_EFFECT_ID)
-        except Exception:
-            await message.answer(get_text('send_next', lang))
     elif res_status == "FAIL_LARGE":
         pass
     elif res_status != "NO_MEDIA":
-        help_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📋 المنصات المدعومة", callback_data="show_platforms")]])
+        help_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="المنصات المدعومة", callback_data="show_platforms")]])
         await status_msg.edit_text(get_text('failed_download', lang), reply_markup=help_kb)
 
 @router.message(~F.text.startswith("http://") & ~F.text.startswith("https://"))
