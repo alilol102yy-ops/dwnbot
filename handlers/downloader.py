@@ -311,6 +311,8 @@ async def handle_url(message: Message, state: FSMContext):
                 await status_msg.edit_text(get_text('no_media', lang))
                 return
 
+            await status_msg.edit_text(f"🎬 <b>Playlist:</b> {pl_title}\n📊 <b>Total (Max 20):</b> {total_count}\n⚡ {get_text('status_step2', lang)}")
+
             for item in items:
                 video_url = item['url']
                 await send_media_with_auto_fallback(message, video_url, status_msg, clean_caption, lang)
@@ -320,6 +322,11 @@ async def handle_url(message: Message, state: FSMContext):
                 await status_msg.delete()
             except Exception:
                 pass
+
+            try:
+                await message.answer(get_text('send_next', lang), message_effect_id=CONFETTI_EFFECT_ID)
+            except Exception:
+                await message.answer(get_text('send_next', lang))
             return
         except Exception:
             await status_msg.edit_text(get_text('failed_download', lang))
@@ -334,10 +341,14 @@ async def handle_url(message: Message, state: FSMContext):
             await status_msg.delete()
         except Exception:
             pass
+        try:
+            await message.answer(get_text('send_next', lang), message_effect_id=CONFETTI_EFFECT_ID)
+        except Exception:
+            await message.answer(get_text('send_next', lang))
     elif res_status == "FAIL_LARGE":
         pass
     elif res_status != "NO_MEDIA":
-        help_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="المنصات المدعومة", callback_data="show_platforms")]])
+        help_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📋 المنصات المدعومة", callback_data="show_platforms")]])
         await status_msg.edit_text(get_text('failed_download', lang), reply_markup=help_kb)
 
 @router.message(~F.text.startswith("http://") & ~F.text.startswith("https://"))
