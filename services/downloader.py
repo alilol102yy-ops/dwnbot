@@ -2,6 +2,7 @@ import aiohttp
 import asyncio
 import re
 import os
+import json
 import html
 import urllib.parse
 import ipaddress
@@ -141,7 +142,82 @@ async def get_youtube_playlist_items(playlist_url: str):
     raise Exception("Failed to fetch playlist")
 
 # ==========================================
-# 2. الروابط المباشرة السريعة (تيك توك وتويتر وإنستغرام)
+# 2. استخراج وسائط بنترست (صور وفيديوهات بجودة أصلية)
+# ==========================================
+async def extract_pinterest_media(url: str):
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9"
+    }
+    try:
+        async with aiohttp.ClientSession(headers=headers) as session:
+            async with session.get(url, allow_redirects=True, timeout=12) as r:
+                if r.status != 200:
+                    return None, None, None
+                html = await r.text()
+
+            title = "Pinterest Media"
+            og_title = re.search(r'<meta property="og:title" content="([^"]+)"', html)
+            if og_title:
+                title = og_title.group(1).replace(" | Pinterest", "").strip()
+
+            # 1. فحص الفيديوهات
+            pws_match = re.search(r'<script id="__PWS_DATA__"[^>]*>(.*?)</script>', html, re.DOTALL)
+            if pws_match:
+                try:
+                    pws_data = json.loads(pws_match.group(1))
+                    pws_str = json.dumps(pws_data)
+                    v_matches = re.findall(r'https://v1\.pinimg\.com/videos/[a-zA-Z0-9/_.-]+\.mp4', pws_str)
+                    if v_matches:
+                        v720 = [v for v in v_matches if '720p' in v.lower() or 'v_720' in v.lower() or 'hls' not in v.lower()]
+                        return v720[0] if v720 else v_matches[0], "video", title
+                except Exception:
+                    pass
+
+            og_vid = re.search(r'<meta property="og:video(?::secure_url)?" content="([^"]+)"', html)
+            if og_vid and ".mp4" in og_vid.group(1):
+                return og_vid.group(1), "video", title
+
+            vids = re.findall(r'https://v1\.pinimg\.com/videos/[^"\', <>\s]+\.mp4', html)
+            if vids:
+                return vids[0], "video", title
+
+            # 2. فحص الصور بدقتها الأصلية العالية
+            json_lds = re.findall(r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>', html, re.DOTALL)
+            for j in json_lds:
+                try:
+                    data = json.loads(j)
+                    img = data.get("image")
+                    if img:
+                        if isinstance(img, str):
+                            img_orig = re.sub(r'/i\.pinimg\.com/(?:[0-9]+x|originals)/', '/i.pinimg.com/originals/', img)
+                            return img_orig, "photo", title
+                        elif isinstance(img, dict) and img.get("url"):
+                            img_orig = re.sub(r'/i\.pinimg\.com/(?:[0-9]+x|originals)/', '/i.pinimg.com/originals/', img.get("url"))
+                            return img_orig, "photo", title
+                except Exception:
+                    pass
+
+            orig_images = re.findall(r'https://i\.pinimg\.com/originals/[a-f0-9]{2}/[a-f0-9]{2}/[a-f0-9]{2}/[a-f0-9]+\.(?:jpg|png|webp|jpeg)', html, re.IGNORECASE)
+            if orig_images:
+                return orig_images[0], "photo", title
+
+            any_images = re.findall(r'https://i\.pinimg\.com/[0-9]+x/([a-f0-9]{2}/[a-f0-9]{2}/[a-f0-9]{2}/[a-f0-9]+\.(?:jpg|png|webp|jpeg))', html, re.IGNORECASE)
+            if any_images:
+                return f"https://i.pinimg.com/originals/{any_images[0]}", "photo", title
+
+            og_img = re.search(r'<meta property="og:image" content="([^"]+)"', html)
+            if og_img:
+                img_orig = re.sub(r'/i\.pinimg\.com/(?:[0-9]+x|originals)/', '/i.pinimg.com/originals/', og_img.group(1))
+                return img_orig, "photo", title
+    except Exception as e:
+        print(f"[LOG] Pinterest extractor error: {e}", flush=True)
+
+    return None, None, None
+
+# ==========================================
+# 3. الروابط المباشرة السريعة (تيك توك وتويتر وبنترست)
 # ==========================================
 async def get_direct_stream_url(url: str):
     if not is_safe_url(url):
@@ -150,6 +226,15 @@ async def get_direct_stream_url(url: str):
 
     if "youtube.com" in url or "youtu.be" in url or "spotify.com" in url:
         return None, "video", False, None, None
+
+    # بنترست / Pinterest
+    if "pinterest.com" in url or "pin.it" in url:
+        try:
+            media_url, m_type, title = await extract_pinterest_media(url)
+            if media_url:
+                return media_url, m_type, check_sensitivity(title) or check_sensitivity(url), title or "Pinterest Media", "Pinterest"
+        except Exception as e:
+            print(f"[LOG] Pinterest direct stream failed: {e}", flush=True)
 
     async with aiohttp.ClientSession() as session:
         # تويتر / X
@@ -499,6 +584,30 @@ async def download_local_compressed(url: str, output_dir: str = "downloads"):
                             os.remove(filepath)
                         except Exception:
                             pass
+
+        # 🟢 محرك بنترست للصور والفيديوهات
+        if "pinterest.com" in url or "pin.it" in url:
+            try:
+                print(f"[LOG] Fetching Pinterest media locally...", flush=True)
+                media_url, m_type, title = await extract_pinterest_media(url)
+                if media_url:
+                    headers = {
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                        "Referer": "https://www.pinterest.com/"
+                    }
+                    ext = ".mp4" if m_type == "video" else ".jpg"
+                    filepath = f"{output_dir}/{file_prefix}{ext}"
+                    async with aiohttp.ClientSession(headers=headers) as session:
+                        async with session.get(media_url, timeout=60) as resp:
+                            if resp.status == 200:
+                                with open(filepath, 'wb') as f:
+                                    async for chunk in resp.content.iter_chunked(2*1024*1024):
+                                        f.write(chunk)
+                                if os.path.exists(filepath) and os.path.getsize(filepath) > 1024:
+                                    print(f"[LOG] Pinterest Media Downloaded Successfully ({m_type})", flush=True)
+                                    return None, filepath, m_type, check_sensitivity(title) or check_sensitivity(url), title or "Pinterest Media", "Pinterest"
+            except Exception as e:
+                print(f"[LOG] Pinterest local download failed: {e}", flush=True)
 
         # 🟡 المحاولة 3: yt-dlp التنزيل المحلي الاحتياطي
         out_template = f"{output_dir}/{file_prefix}.%(ext)s"
